@@ -1,5 +1,6 @@
 ---
-title: "QLD_com_fish_data"
+title: "QLD Commercial line Fisheries"
+author: "Claire Kirby"
 output: html_document
 date: "2025-09-18"
 ---
@@ -27,3 +28,238 @@ plot(pressure)
 ```
 
 Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+
+Install and load packages
+```{r}
+#install.packages("tidyverse")
+install.packages("janitor")
+install.packages("dplyr")
+```
+
+```{r}
+library ("tidyverse")
+library("janitor")
+library("dplyr")
+```
+
+Load Data
+```{r}
+raw_data <- read_csv("C:/Users/kirby/OneDrive/Documents/Techniques_R/QLD_fish_assign/QLD_commercial_fish_analysis/data/export_datasheet.csv", col_names = FALSE, show_col_types = FALSE)
+
+view(raw_data)
+```
+
+--------restart-------
+
+```{r}
+# Revise Header rows
+species  <- raw_data[2, -1] %>% unlist() %>% as.character()
+measures <- raw_data[3, -1] %>% unlist() %>% as.character()
+
+```
+
+```{r}
+#forward fill species across the blanks
+
+ffill <- function(x) {
+  last <- NA_character_
+  for (i in seq_along(x)) {
+    if (!is.na(x[i]) && nzchar(x[i])) last <- x[i]
+    if (is.na(x[i]) || !nzchar(x[i])) x[i] <- last
+  }
+  x
+}
+species <- ffill(species)
+```
+
+```{r}
+# Revise column names: Year and Species_Measure
+
+new_names <- c("Year", paste0(species, "_", measures)) %>%
+  stringr::str_replace_all("\\s+", " ") %>%
+  stringr::str_squish()
+```
+
+```{r}
+#Apply names, then drop the top 3 rows and "Grand total" row
+dat <- raw_data[-c(1,2,3), ]
+names(dat) <- new_names
+
+data_revised <- dat %>%
+  filter(!is.na(Year), Year != "Grand Total")
+```
+
+```{r}
+
+#Tidy, keeping only 4 species need, removing snapper-saddleback, standardise labels
+
+fish_data <- data_revised %>%
+  pivot_longer(
+    cols = -Year,
+    names_to = c("Species_raw", ".value"),
+    names_sep = "_"
+  ) %>%
+  # keep only desired species, drop Snapper - saddleback etc.
+  filter(Species_raw %in% c("Coral trout",
+                            "Emperor - red",
+                            "Emperor - red throat",
+                            "Mackerel - spanish")) %>%
+  # standardize column names and species labels
+  mutate(
+    year     = as.integer(Year),
+    species  = case_when(
+      Species_raw == "Coral trout"            ~ "Coral trout",
+      Species_raw == "Emperor - red"          ~ "emperor-red",
+      Species_raw == "Emperor - red throat"   ~ "emperor-red throat",
+      Species_raw == "Mackerel - spanish"     ~ "mackerel-spanish"
+    ),
+    licences = readr::parse_number(Licences),
+    days     = readr::parse_number(Days),
+    tonnes   = readr::parse_number(stringr::str_replace_all(Tonnes, ",", ""))
+  ) %>%
+  select(year, species, licences, days, tonnes) %>%
+  arrange(year, species)
+
+print(tidy_df, n =30)
+```
+
+```{r}
+#Change species row names to stay consistent
+
+fish_comm <- fish_data %>%
+  mutate(
+    species = case_when(
+      species == "Coral trout"          ~ "Coral trout",
+      species == "emperor-red"          ~ "Emperor Red",
+      species == "emperor-red throat"   ~ "Emperor Red Throat",
+      species == "mackerel-spanish"     ~ "Mackerel Spanish",
+      TRUE                              ~ species
+    )
+  )
+```
+
+```{r}
+#Final dataset
+print(fish_comm, n=30)
+```
+
+Plot catch(tonnes) over time with species separated
+```{r}
+#Plot catch 
+ggplot(fish_comm, aes(x = year, y = tonnes)) +
+  geom_line(color = "steelblue") +
+  geom_point(color = "steelblue") +
+  facet_wrap(~ species, scales = "free_y") +
+  labs(title = "Catch (Tonnes) by Species",
+       x = "Year", y = "Catch (tonnes)")
+```
+
+Plot effort (days) over time with species separated
+
+```{r}
+#Plot Effort
+
+ggplot(fish_comm, aes(x = year, y = days)) +
+  geom_line(color = "orange") +
+  geom_point(color = "orange") +
+  facet_wrap(~ species, scales = "free_y") +
+  labs(title = "Fishing Effort (Days) by Species",
+       x = "Year", y = "Effort (days)")
+```
+
+CPUE (Catch Per Unit Effort) with species seperated
+```{r}
+library(scales)
+
+#Calculate CPUE
+cpue_df <- fish_comm %>%
+  mutate(
+    year   = as.integer(year),
+    days   = as.numeric(days),
+    tonnes = as.numeric(tonnes),
+    cpue   = tonnes / days
+  ) %>%
+  filter(is.finite(cpue))
+
+#Plot CPUE
+cpue_plot <- ggplot(cpue_df, aes(x = .data$year, y = .data$cpue)) +
+  geom_line(color = "#1f78b4") +
+  geom_point(color = "#1f78b4") +
+  facet_wrap(~ .data$species, scales = "free_y") +
+  labs(title = "CPUE over Time of 4 Highly Targeted Commercial Line Species",
+       subtitle = "1990-2023",
+       x = "Year",
+       y = "CPUE (tonnes per day)") +
+  scale_x_continuous(breaks = pretty_breaks()) +
+  scale_y_continuous(labels = number_format(accuracy = 0.01)) +
+  theme_minimal(base_size = 12) +
+  theme(
+    panel.grid.minor = element_blank(),
+    plot.title = element_text(face = "bold", size = 14),
+    strip.text = element_text(face = "bold"),
+    strip.background = element_rect(fill = "grey90", color = NA),  
+    panel.background = element_rect(fill = "white", color = "black"), 
+    plot.background  = element_rect(fill = "white", color = NA),
+    
+  )
+print (cpue_plot)
+
+```
+
+
+Description of graph:
+Coral Tour: CPUE fluctuates but no strong long-term decline
+Emperor Red: CPUE declines sharply in early 1990s, then stabilizes at low CPUE levels (~0.02 tonnes/day)
+Emperor Red Throat: Steady downward trend from early 1990s, then stabilizes at ~0.03 tonnes/day
+Mackerel Spanish: CPUE low in 1990s, increasing around 2005-2010 with fluctuating high levels in recent years
+
+```{r}
+#save CPUE plot
+ggsave("CPUE_plot.png", plot = cpue_plot, width = 9, height = 6, dpi = 300)
+
+```
+
+Smooth Trend Line
+```{r}
+#CPUE with smooth trend line
+
+smooth_cpue <- ggplot(cpue_df, aes(x = .data$year, y = .data$cpue)) +
+  # raw series (lighter weight so trend stands out)
+  geom_line(color = "#1f78b4", linewidth = 0.6) +
+  geom_point(color = "#1f78b4", size = 1.6) +
+  # smooth trend (solid, slightly thicker)
+  geom_smooth(method = "loess", se = FALSE, color = "black", linewidth = 0.9) +
+  facet_wrap(~ .data$species, scales = "free_y") +
+  labs(
+    title = "CPUE over Time of 4 Highly Targeted Commercial Line Species",
+    subtitle = "1990–2023",
+    x = "Year",
+    y = "CPUE (tonnes per day)"
+  ) +
+  # ticks every 5 years
+  scale_x_continuous(
+    breaks = seq(min(cpue_df$year, na.rm = TRUE),
+                 max(cpue_df$year, na.rm = TRUE), by = 5)
+  ) +
+  scale_y_continuous(labels = number_format(accuracy = 0.01)) +
+  theme_minimal(base_size = 12) +
+  theme(
+    panel.grid.minor = element_blank(),
+    plot.title       = element_text(face = "bold", size = 14),
+    strip.text       = element_text(face = "bold"),
+    strip.background = element_rect(fill = "grey90", color = NA),  # grey facet label
+    panel.background = element_rect(fill = "white", color = NA),   # white panels, no heavy border
+    plot.background  = element_rect(fill = "white", color = NA)
+  )
+print(smooth_cpue)
+
+```
+
+Save Plot
+```{r}
+#Save CPUE plot with smooth trend line
+
+ggsave("Smooth_CPUE_plot.png", plot = smooth_cpue, width = 9, height = 6, dpi = 300)
+
+```
+
