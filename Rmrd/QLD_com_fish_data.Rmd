@@ -1,33 +1,9 @@
 ---
-title: "QLD Commercial line Fisheries"
+title: "CPUE: QLD Commercial line Fisheries"
 author: "Claire Kirby"
 output: html_document
 date: "2025-09-18"
 ---
-
-```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
-```
-
-## R Markdown
-
-This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
-
-When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
-
-```{r cars}
-summary(cars)
-```
-
-## Including Plots
-
-You can also embed plots, for example:
-
-```{r pressure, echo=FALSE}
-plot(pressure)
-```
-
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
 
 Install and load packages
 ```{r}
@@ -49,8 +25,8 @@ raw_data <- read_csv("C:/Users/kirby/OneDrive/Documents/Techniques_R/QLD_fish_as
 view(raw_data)
 ```
 
---------restart-------
 
+Tidy dataset
 ```{r}
 # Revise Header rows
 species  <- raw_data[2, -1] %>% unlist() %>% as.character()
@@ -59,7 +35,7 @@ measures <- raw_data[3, -1] %>% unlist() %>% as.character()
 ```
 
 ```{r}
-#forward fill species across the blanks
+# Fill "species" across the blanks
 
 ffill <- function(x) {
   last <- NA_character_
@@ -73,7 +49,7 @@ species <- ffill(species)
 ```
 
 ```{r}
-# Revise column names: Year and Species_Measure
+# Revise column names: Year,Species, "measures"(licenses, day, and tonnes)
 
 new_names <- c("Year", paste0(species, "_", measures)) %>%
   stringr::str_replace_all("\\s+", " ") %>%
@@ -89,9 +65,10 @@ data_revised <- dat %>%
   filter(!is.na(Year), Year != "Grand Total")
 ```
 
+Formart Dataset
 ```{r}
 
-#Tidy, keeping only 4 species need, removing snapper-saddleback, standardise labels
+#Reshape wide--> split column names into "Species_raw" and values (Licences, Days, and Tonnes)
 
 fish_data <- data_revised %>%
   pivot_longer(
@@ -99,12 +76,16 @@ fish_data <- data_revised %>%
     names_to = c("Species_raw", ".value"),
     names_sep = "_"
   ) %>%
-  # keep only desired species, drop Snapper - saddleback etc.
+
+
+# Keep only the 4 targeted species (exclude others like Snapper-saddleback)
   filter(Species_raw %in% c("Coral trout",
                             "Emperor - red",
                             "Emperor - red throat",
                             "Mackerel - spanish")) %>%
-  # standardize column names and species labels
+
+  
+# Standardize labels and clean columns
   mutate(
     year     = as.integer(Year),
     species  = case_when(
@@ -117,6 +98,9 @@ fish_data <- data_revised %>%
     days     = readr::parse_number(Days),
     tonnes   = readr::parse_number(stringr::str_replace_all(Tonnes, ",", ""))
   ) %>%
+
+#Keep only final cleaned columns and order by year and species
+  
   select(year, species, licences, days, tonnes) %>%
   arrange(year, species)
 
