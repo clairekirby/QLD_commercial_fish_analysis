@@ -104,7 +104,7 @@ fish_data <- data_revised %>%
   select(year, species, licences, days, tonnes) %>%
   arrange(year, species)
 
-print(tidy_df, n =30)
+print(fish_data, n =30)
 ```
 
 ```{r}
